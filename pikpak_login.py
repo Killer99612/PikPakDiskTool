@@ -6,6 +6,7 @@ import getpass
 from pikpakapi import PikPakApi
 
 import config
+from pikpak_client import build_httpx_args
 
 
 def save_token(client: PikPakApi):
@@ -31,6 +32,7 @@ async def main():
         username=config.PIKPAK_USERNAME,
         password=password,
         device_id=config.DEVICE_ID,
+        httpx_client_args=build_httpx_args(),
     )
 
     try:

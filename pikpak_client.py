@@ -14,6 +14,55 @@ PIKPAK_CLIENT_ID = getattr(config, "PIKPAK_CLIENT_ID", "YUMx5nl8ZU8Ap8pm")
 pikpakapi.CLIENT_ID = PIKPAK_CLIENT_ID
 
 
+def build_httpx_args():
+    """httpx 客户端参数：统一超时；config 配了 PIKPAK_PROXY 则走代理。
+
+    应用不读 Windows 系统代理，只认这里的配置（或 HTTP_PROXY 环境变量）。
+    """
+    args = {"timeout": 30}
+    proxy = (getattr(config, "PIKPAK_PROXY", "") or "").strip()
+    if proxy:
+        args["proxy"] = proxy
+    return args
+
+
+async def fetch_captcha_token(client: PikPakApi, action: str) -> str:
+    """换取 captcha_token。
+
+    captcha_sign 的计算常量绑定 android 客户端 ID（见 pikpakapi.utils），
+    captcha/init 请求若携带 web 客户端 ID 会被服务端以
+    "invalid captcha_sign" 拒绝，永远换不到 captcha_token，
+    后续请求缺少 X-Captcha-Token 时报 "Verification code is invalid"。
+    这里固定用与签名一致的 android 客户端 ID 调 captcha/init；
+    signin/refresh 请求体里的 client_id 仍是上面覆盖的 web 值。
+    """
+    from pikpakapi.utils import (
+        captcha_sign,
+        get_timestamp,
+        CLIENT_ID as SIGN_CLIENT_ID,
+        CLIENT_VERSION,
+        PACKAG_ENAME,
+    )
+
+    t = f"{get_timestamp()}"
+    meta = {
+        "captcha_sign": captcha_sign(client.device_id, t),
+        "client_version": CLIENT_VERSION,
+        "package_name": PACKAG_ENAME,
+        "user_id": client.user_id,
+        "timestamp": t,
+    }
+    params = {
+        "client_id": SIGN_CLIENT_ID,
+        "action": action,
+        "device_id": client.device_id,
+        "meta": meta,
+    }
+    url = f"https://{PikPakApi.PIKPAK_USER_HOST}/v1/shield/captcha/init"
+    result = await client._request_post(url, data=params)
+    return result.get("captcha_token") or ""
+
+
 def _save_token_dict(client):
     data = client.to_dict() if hasattr(client, 'to_dict') else {}
     # 确保保存的字段完整
@@ -22,6 +71,7 @@ def _save_token_dict(client):
     data.setdefault('username', getattr(client, 'username', config.PIKPAK_USERNAME))
     data.setdefault('password', getattr(client, 'password', 'token_auth_placeholder'))
     data.setdefault('device_id', getattr(client, 'device_id', config.DEVICE_ID))
+    data.setdefault('client_id', pikpakapi.CLIENT_ID)
     with open(config.TOKEN_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
@@ -49,6 +99,7 @@ def load_client() -> PikPakApi:
         username=data.get("username") or config.PIKPAK_USERNAME,
         password=data.get("password", "") or "token_auth_placeholder",
         device_id=data.get("device_id") or config.DEVICE_ID,
+        httpx_client_args=build_httpx_args(),
     )
     # 回填 token 等字段
     client.access_token = data.get("access_token")
@@ -70,6 +121,11 @@ def load_client() -> PikPakApi:
     captcha = getattr(config, "PIKPAK_CAPTCHA_TOKEN", "").strip()
     if captcha:
         client.captcha_token = captcha
+
+    # 恢复签发该 token 的客户端身份：signin/refresh 请求体里的 client_id
+    # 必须与 token 匹配（密码登录是 android，浏览器导入是 web）
+    client_id = data.get("client_id") or getattr(config, "PIKPAK_CLIENT_ID", "YUMx5nl8ZU8Ap8pm")
+    pikpakapi.CLIENT_ID = client_id
 
     client.token_refresh_callback = lambda c, *a, **k: _save_token_dict(c)
 
@@ -104,19 +160,15 @@ def load_client() -> PikPakApi:
 
 
 async def ensure_captcha(client, action="GET:/drive/v1/files"):
-    """设置 captcha_token。优先用 config 里的，没有才尝试从 API 获取。"""
+    """设置 captcha_token。优先在线换取（值过期很快），失败再退回 config 里的。"""
     if client.captcha_token:
         return
-    # 从 config 加载浏览器的 captcha_token
-    captcha = getattr(config, "PIKPAK_CAPTCHA_TOKEN", "").strip()
-    if captcha:
-        client.captcha_token = captcha
-        return
-    # 尝试从 API 获取（需要正确的 device_id 才能成功）
-    result = await client.captcha_init(action=action)
-    client.captcha_token = result.get("captcha_token", "")
-    if not client.captcha_token:
-        raise RuntimeError("获取 captcha_token 失败。请从浏览器复制 captcha_token 填入 config_local.py")
+    captcha = await fetch_captcha_token(client, action=action)
+    if not captcha:
+        captcha = getattr(config, "PIKPAK_CAPTCHA_TOKEN", "").strip()
+    if not captcha:
+        raise RuntimeError("获取 captcha_token 失败。请检查网络，或从浏览器复制 captcha_token 填入 config_local.py")
+    client.captcha_token = captcha
 
 
 async def get_quota(client) -> dict:
@@ -131,6 +183,72 @@ async def get_quota(client) -> dict:
         "limit_bytes": limit,
         "usage_gb": round(usage / (1024**3), 2),
         "limit_gb": round(limit / (1024**3), 2),
+    }
+
+
+async def list_folder(client, parent_id=None, page_token=None, size=200):
+    """实时列出一个文件夹（子文件夹+文件），在线浏览用，不走本地扫描库。"""
+    await ensure_captcha(client, action="GET:/drive/v1/files")
+    res = await client.file_list(size=size, parent_id=parent_id, next_page_token=page_token)
+    items = []
+    for f in res.get("files", []):
+        is_folder = f.get("kind", "").endswith("folder")
+        items.append({
+            "id": f.get("id", ""),
+            "name": f.get("name", ""),
+            "kind": "folder" if is_folder else "file",
+            "size": int(f.get("size", 0) or 0),
+            "mime_type": f.get("mime_type", "") or "",
+        })
+    return {"items": items, "next_page_token": res.get("next_page_token") or ""}
+
+
+async def get_file_detail(client, file_id):
+    """获取文件详情与播放/下载直链。
+
+    直链接口按 action 校验 captcha（GET:/drive/v1/files/<id>），
+    库自带的 get_download_url 内部 captcha_init 会因 client_id 验签失败，
+    这里用 fetch_captcha_token 取新值后自己请求。
+
+    medias 按浏览器可播优先排序：h264 原片 > 转码流 > 其他（如 h265 原片）。
+    """
+    try:
+        captcha = await fetch_captcha_token(client, action=f"GET:/drive/v1/files/{file_id}")
+        if captcha:
+            client.captcha_token = captcha
+    except Exception:
+        pass  # 换取失败则沿用已有 captcha
+    url = f"https://{PikPakApi.PIKPAK_API_HOST}/drive/v1/files/{file_id}"
+    detail = await client._request_get(url, {"thumbnail_size": "SIZE_LARGE"})
+    medias = []
+    for m in detail.get("medias") or []:
+        link = (m or {}).get("link") or {}
+        if not link.get("url"):
+            continue
+        v = (m or {}).get("video") or {}
+        codec = (v.get("video_codec") or "").lower()
+        name = m.get("media_name") or ""
+        # 0: 浏览器可解码（h264 或未知）；2: 大概率不可播（h265 等）
+        codec_score = 2 if codec and codec != "h264" else 0
+        orig_score = 0 if name.lower() == "original" else 1
+        medias.append({
+            "name": name,
+            "url": link["url"],
+            "video_codec": codec,
+            "audio_codec": (v.get("audio_codec") or "").lower(),
+            "width": v.get("width") or 0,
+            "height": v.get("height") or 0,
+            "duration": v.get("duration") or 0,
+            "_sort": (codec_score, orig_score),
+        })
+    medias.sort(key=lambda x: x.pop("_sort"))
+    return {
+        "id": detail.get("id", file_id),
+        "name": detail.get("name", ""),
+        "size": int(detail.get("size", 0) or 0),
+        "mime_type": detail.get("mime_type", "") or "",
+        "web_content_link": detail.get("web_content_link", "") or "",
+        "medias": medias,
     }
 
 

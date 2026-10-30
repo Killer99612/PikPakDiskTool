@@ -16,3 +16,8 @@ PIKPAK_REFRESH_TOKEN = ""
 # 浏览器的 captcha_token（F12 -> Application -> Local Storage -> captcha_XXX）
 # 过期后需重新获取
 PIKPAK_CAPTCHA_TOKEN = ""
+
+# 网络代理（可选）。应用不读 Windows 系统代理，只认这里。
+# 本机有代理客户端时填，例如 v2rayN/Clash：http://127.0.0.1:10808
+# 留空 "" 表示直连
+PIKPAK_PROXY = ""

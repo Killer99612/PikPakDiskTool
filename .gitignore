@@ -10,6 +10,9 @@ __pycache__/
 dist/
 build/
 
+# 打包产物
+*.exe
+
 # 虚拟环境
 venv/
 .venv/

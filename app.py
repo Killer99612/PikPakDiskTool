@@ -114,6 +114,79 @@ def api_tree():
         return jsonify({"ok": False, "error": str(e)})
 
 
+@app.route("/api/dir_files")
+def api_dir_files():
+    """列出某目录下的直接文件（读本地扫描库，不请求网盘）。"""
+    path = request.args.get("path", "")
+    try:
+        limit = min(max(int(request.args.get("limit", 200)), 1), 500)
+        offset = max(int(request.args.get("offset", 0)), 0)
+    except ValueError:
+        limit, offset = 200, 0
+    try:
+        data = analyzer.list_directory_files(path, limit=limit, offset=offset)
+        return jsonify({"ok": True, **data})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
+
+
+@app.route("/api/drive/list")
+def api_drive_list():
+    """实时浏览网盘目录（在线播放用，不依赖本地扫描库）。"""
+    folder_id = request.args.get("folder_id", "") or None
+    page_token = request.args.get("page_token", "") or None
+    try:
+        size = min(max(int(request.args.get("size", 200)), 1), 500)
+    except ValueError:
+        size = 200
+    try:
+        from pikpak_client import load_client, list_folder
+        client = load_client()
+        data = _run_async(list_folder(client, parent_id=folder_id, page_token=page_token, size=size))
+        try:
+            import asyncio as _a
+            _a.new_event_loop().run_until_complete(client.httpx_client.aclose())
+        except Exception:
+            pass
+        return jsonify({"ok": True, **data})
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"浏览失败: {e}", "hint": _drive_error_hint(str(e))})
+
+
+@app.route("/api/drive/file")
+def api_drive_file():
+    """取文件详情与播放/下载直链。"""
+    file_id = request.args.get("id", "")
+    if not file_id:
+        return jsonify({"ok": False, "error": "缺少文件 id"})
+    try:
+        from pikpak_client import load_client, get_file_detail
+        client = load_client()
+        data = _run_async(get_file_detail(client, file_id))
+        try:
+            import asyncio as _a
+            _a.new_event_loop().run_until_complete(client.httpx_client.aclose())
+        except Exception:
+            pass
+        return jsonify({"ok": True, **data})
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"获取直链失败: {e}", "hint": _drive_error_hint(str(e))})
+
+
+def _drive_error_hint(err):
+    if "Verification code" in err:
+        return "captcha/风控校验失败，请稍后重试；频繁请求会触发风控。"
+    if any(k in err.lower() for k in ("token", "401", "unauthorized", "not found", "expire")):
+        return "登录态无效或已过期，请到「扫描/登录」页重新登录或导入 token。"
+    if any(k in err for k in ("Max retries", "Timeout", "Connect", "timeout")):
+        return (
+            "连不上 PikPak。若其他网站正常，多半是本机 IP 被临时限制"
+            "（重启路由器换 IP 或用手机热点即可，不需要代理）；"
+            "也可能是断网或代理配置失效，稍后再试。"
+        )
+    return ""
+
+
 # ============================================================
 # 去重
 # ============================================================
@@ -355,7 +428,11 @@ def api_login():
     data = request.get_json(force=True)
     username = data.get("username", "").strip()
     password = data.get("password", "")
-    device_id = data.get("device_id", "").strip() or config.DEVICE_ID
+    device_id = data.get("device_id", "").strip()
+    if not device_id:
+        cfg_dev = (getattr(config, "DEVICE_ID", "") or "").strip()
+        # 占位符无效；留空交给库按账号派生稳定的设备 ID
+        device_id = "" if cfg_dev.startswith("your_") else cfg_dev
 
     if not username or not password:
         return jsonify({"ok": False, "error": "请填写邮箱和密码"})
@@ -364,24 +441,22 @@ def api_login():
         import json as _json
         import pikpakapi as _pik
         from pikpakapi import PikPakApi
+        from pikpak_client import ensure_captcha, build_httpx_args
 
-        # 用正确的 client_id
-        _pik.CLIENT_ID = getattr(config, "PIKPAK_CLIENT_ID", "YUMx5nl8ZU8Ap8pm")
+        # signin 必须用与 client_secret 配套的 android 客户端身份，
+        # 用 web client_id 调 /v1/auth/signin 会 404 not found
+        _pik.CLIENT_ID = _pik.utils.CLIENT_ID
 
-        client = PikPakApi(username=username, password=password, device_id=device_id)
+        client = PikPakApi(username=username, password=password, device_id=device_id,
+                           httpx_client_args=build_httpx_args())
 
         async def _login():
-            # 1. 先获取 captcha_token
-            try:
-                result = await client.captcha_init(action="POST:/v1/auth/signin")
-                client.captcha_token = result.get("captcha_token", "")
-            except Exception:
-                pass  # captcha 失败不阻止登录尝试
-
-            # 2. 密码登录
+            # 1. 密码登录（login 内部自取 signin 用的 captcha_token）
             await client.login()
 
-            # 3. 验证 token 有效
+            # 2. 验证 token 有效（about 接口需要 captcha，否则报
+            #    "Verification code is invalid"）
+            await ensure_captcha(client, action="GET:/drive/v1/about")
             quota = await client.get_quota_info()
             q = quota.get("quota", {})
 
@@ -391,8 +466,9 @@ def api_login():
                 "refresh_token": client.refresh_token,
                 "username": username,
                 "password": password,
-                "device_id": device_id,
+                "device_id": getattr(client, "device_id", device_id),
                 "user_id": client.user_id,
+                "client_id": _pik.CLIENT_ID,
             }
             if client.captcha_token:
                 data_dict["captcha_token"] = client.captcha_token
@@ -417,12 +493,19 @@ def api_login():
         err = str(e)
         # 判断错误类型，给出针对性提示
         hint = ""
-        if "AccessProhibited" in err or "captcha" in err.lower():
+        if "review" in err:
+            hint = (
+                "触发 API 风控（review）。请等待几分钟到几小时后重试，"
+                "期间不要反复尝试（会延长拦截）。急用可改「手动导入 Token」。"
+            )
+        elif "AccessProhibited" in err or "captcha" in err.lower():
             hint = "API 风控拦截。请改用手动导入 Token 方式（从浏览器复制）。"
         elif "invalid_account_or_password" in err or "Invalid username" in err:
             hint = "邮箱或密码错误，请检查。"
         elif "Verification code" in err:
             hint = "验证码校验失败。请改用手动导入 Token 方式。"
+        elif any(k in err for k in ("Max retries", "Timeout", "Connect", "timeout")):
+            hint = "连不上 PikPak。若其他网站正常，多半是本机 IP 被临时限制（重启路由器换 IP 或用手机热点即可，不需要代理）；也可能是断网，稍后再试。"
         else:
             hint = "登录失败。如果密码登录不行，请切换到「手动导入 Token」方式。"
         return jsonify({"ok": False, "error": err, "hint": hint})
@@ -484,16 +567,69 @@ def api_token_import():
 
     # 验证 token 有效性
     def verify_and_save():
+        import pikpakapi as _pik
         from pikpakapi import PikPakApi
+        from pikpak_client import build_httpx_args
 
-        client = PikPakApi.from_dict(token_dict)
+        # 浏览器 token 是 web 客户端签发的，刷新需用同一 client_id
+        # （密码登录会把全局改成 android，这里改回来）
+        web_client_id = getattr(config, "PIKPAK_CLIENT_ID", "YUMx5nl8ZU8Ap8pm")
+        _pik.CLIENT_ID = web_client_id
+
+        # 不用 from_dict：浏览器复制的 JSON 通常没有 username/password，
+        # 直接构造再回填 token，与 pikpak_client.load_client 保持一致
+        client = PikPakApi(
+            username=token_dict.get("username") or config.PIKPAK_USERNAME,
+            password=token_dict.get("password") or "token_auth_placeholder",
+            device_id=token_dict.get("device_id") or config.DEVICE_ID,
+            httpx_client_args=build_httpx_args(),
+        )
+        client.access_token = token_dict.get("access_token")
+        client.refresh_token = token_dict.get("refresh_token")
 
         async def _verify():
+            # captcha_init 的 meta 需要 user_id，从 JWT 里解出来
+            if client.access_token and not client.user_id:
+                try:
+                    import base64
+                    payload = client.access_token.split(".")[1]
+                    payload += "=" * (-len(payload) % 4)
+                    claims = _json.loads(base64.b64decode(payload))
+                    client.user_id = claims.get("sub", "")
+                except Exception:
+                    pass
+
+            # 缺少或使用过期的 captcha_token 时，PikPak API 会报
+            # "Verification code is invalid"，验证前先换取一个新的
+            from pikpak_client import fetch_captcha_token
+            fresh = ""
+            try:
+                fresh = await fetch_captcha_token(client, action="GET:/drive/v1/about")
+            except Exception:
+                pass
+            client.captcha_token = (
+                fresh
+                or token_dict.get("captcha_token")
+                or getattr(config, "PIKPAK_CAPTCHA_TOKEN", "").strip()
+                or None
+            )
+
             quota = await client.get_quota_info()
             q = quota.get("quota", {})
             # 保存
+            save = {
+                "access_token": client.access_token,
+                "refresh_token": client.refresh_token,
+                "username": getattr(client, "username", config.PIKPAK_USERNAME),
+                "password": getattr(client, "password", "token_auth_placeholder"),
+                "device_id": getattr(client, "device_id", config.DEVICE_ID),
+                "user_id": client.user_id or "",
+                "client_id": web_client_id,
+            }
+            if client.captcha_token:
+                save["captcha_token"] = client.captcha_token
             with open(config.TOKEN_PATH, "w", encoding="utf-8") as f:
-                _json.dump(client.to_dict(), f, ensure_ascii=False, indent=2)
+                _json.dump(save, f, ensure_ascii=False, indent=2)
             usage = int(q.get("usage", 0))
             limit = int(q.get("limit", 0))
             await client.httpx_client.aclose()
@@ -508,7 +644,20 @@ def api_token_import():
         quota = verify_and_save()
         return jsonify({"ok": True, "msg": "token 导入成功", "quota": quota})
     except Exception as e:
-        return jsonify({"ok": False, "error": f"token 验证失败: {e}"})
+        err = str(e)
+        hint = ""
+        if "Verification code" in err:
+            hint = (
+                "captcha 校验失败。请检查 config_local.py 的 DEVICE_ID 是否为浏览器真实的"
+                " deviceid（去掉 wdi10. 前缀）；若仍失败，把浏览器 Local Storage 中"
+                " captcha_XXX 里的 captcha_token 填入 PIKPAK_CAPTCHA_TOKEN。"
+                "另注意 access_token 约 2 小时过期，过期请重新复制。"
+            )
+        elif any(k in err.lower() for k in ("401", "unauthorized", "invalid", "expire", "bad uuid", "not found", "not_found")):
+            hint = "access/refresh token 无效或已过期，请从浏览器重新复制完整的 token 值。"
+        elif any(k in err for k in ("Max retries", "Timeout", "Connect", "timeout")):
+            hint = "连不上 PikPak。若其他网站正常，多半是本机 IP 被临时限制（重启路由器换 IP 或用手机热点即可，不需要代理）；也可能是断网，稍后再试。"
+        return jsonify({"ok": False, "error": f"token 验证失败: {err}", "hint": hint})
 
 
 @app.route("/api/token/status")
@@ -564,8 +713,19 @@ def _auto_load_token():
 
 
 if __name__ == "__main__":
+    import sys as _sys
+    import threading
+    import webbrowser
+
     scanner.init_db()
     _auto_load_token()
+
+    url = "http://127.0.0.1:5001"
     print(f"\n🍅 PikPak 磁盘空间分析工具")
-    print(f"   http://127.0.0.1:5001\n")
+    print(f"   {url}")
+    print(f"   浏览器将自动打开；关闭本窗口即停止服务\n")
+
+    if "--no-browser" not in _sys.argv:
+        threading.Timer(1.2, lambda: webbrowser.open(url)).start()
+
     app.run(host="127.0.0.1", port=5001, debug=False)

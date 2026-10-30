@@ -60,6 +60,185 @@ body {
 .tree-item .count { color: #b2bec3; font-size: 12px; }
 .tree-indent { display: inline-block; }
 
+/* 目录内文件列表 */
+.files-head {
+  margin: 18px 2px 6px; padding-top: 12px; border-top: 1px dashed #dfe6e9;
+  font-size: 13px; color: #636e72;
+}
+.files-head b { color: #2d3436; }
+.file-item {
+  padding: 6px 12px; border-radius: 8px;
+  display: flex; align-items: center; gap: 12px;
+  font-size: 13px; color: #2d3436;
+}
+.file-item:hover { background: #fafafa; }
+.file-item .icon { font-size: 15px; width: 28px; text-align: center; }
+.file-item .name { flex: 1; word-break: break-all; }
+.file-item .size { font-weight: 600; color: #6c5ce7; font-size: 13px; white-space: nowrap; }
+.file-more { display: block; margin: 10px auto 4px; }
+
+/* 在线播放弹层（深色播放器） */
+.player-overlay {
+  position: fixed; inset: 0; z-index: 1000; padding: 28px;
+  background: rgba(12, 12, 22, .78); backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: center;
+}
+.player-modal {
+  width: 100%; max-width: 980px; background: #16161f;
+  border: 1px solid rgba(255, 255, 255, .08); border-radius: 18px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .55); overflow: hidden;
+  display: flex; flex-direction: column; max-height: 92vh;
+}
+.player-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px; border-bottom: 1px solid rgba(255, 255, 255, .07);
+}
+.player-icon {
+  width: 38px; height: 38px; border-radius: 10px; flex: none;
+  background: rgba(108, 92, 231, .22); display: flex;
+  align-items: center; justify-content: center; font-size: 18px;
+}
+.player-titles { flex: 1; min-width: 0; }
+.player-title {
+  color: #f2f2f8; font-size: 15px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.player-meta { color: #8b8ba3; font-size: 12px; margin-top: 2px; }
+.player-close {
+  width: 34px; height: 34px; border-radius: 50%; flex: none; cursor: pointer;
+  background: rgba(255, 255, 255, .08); color: #c9c9db; border: none; font-size: 14px;
+}
+.player-close:hover { background: rgba(255, 255, 255, .18); color: #fff; }
+.player-stage {
+  position: relative; background: #000; aspect-ratio: 16 / 9; min-height: 260px;
+  display: flex; align-items: center; justify-content: center;
+}
+.player-stage img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.player-stage audio { width: 100%; height: 88px; background: #101018; }
+.player-stage:fullscreen, .player-stage:-webkit-full-screen {
+  aspect-ratio: auto; width: 100vw; height: 100vh;
+}
+
+/* ---- 视频播放器（B 站风格控件）---- */
+.pl-wrap { position: absolute; inset: 0; background: #000; overflow: hidden; }
+.pl-wrap.hide-cursor { cursor: none; }
+.pl-wrap video { width: 100%; height: 100%; object-fit: contain; display: block; }
+.pl-bigplay {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 78px; height: 78px; border-radius: 50%; border: none; cursor: pointer;
+  font-size: 27px; color: #fff; background: rgba(108, 92, 231, .88);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, .55); display: flex;
+  align-items: center; justify-content: center; transition: transform .15s, background .15s;
+}
+.pl-bigplay:hover { background: #6c5ce7; transform: translate(-50%, -50%) scale(1.07); }
+.pl-loading {
+  position: absolute; inset: 0; display: none; flex-direction: column; gap: 12px;
+  align-items: center; justify-content: center; background: rgba(0, 0, 0, .3);
+  color: #cfcfe4; font-size: 13px; pointer-events: none;
+}
+.pl-ctrl {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 0 14px 10px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, .78));
+  transition: opacity .25s, transform .25s;
+}
+.pl-ctrl.hide { opacity: 0; transform: translateY(10px); pointer-events: none; }
+.pl-seek { position: relative; padding: 12px 0 6px; cursor: pointer; touch-action: none; }
+.pl-seek-track {
+  position: relative; height: 4px; border-radius: 2px;
+  background: rgba(255, 255, 255, .22); transition: height .12s;
+}
+.pl-seek:hover .pl-seek-track { height: 6px; }
+.pl-seek-buf {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 0;
+  background: rgba(255, 255, 255, .32); border-radius: 2px;
+}
+.pl-seek-played {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 0;
+  background: #6c5ce7; border-radius: 2px;
+}
+.pl-seek-thumb {
+  position: absolute; top: 50%; left: 0; width: 13px; height: 13px;
+  border-radius: 50%; background: #fff; transform: translate(-50%, -50%);
+  box-shadow: 0 1px 8px rgba(0, 0, 0, .55); opacity: 0; transition: opacity .12s;
+}
+.pl-seek:hover .pl-seek-thumb, .pl-seek.dragging .pl-seek-thumb { opacity: 1; }
+.pl-seek-tip {
+  position: absolute; bottom: 30px; left: 0; transform: translateX(-50%);
+  background: rgba(0, 0, 0, .82); color: #fff; font-size: 12px;
+  padding: 3px 9px; border-radius: 6px; display: none;
+  pointer-events: none; white-space: nowrap;
+}
+.pl-bar-row { display: flex; align-items: center; gap: 8px; color: #fff; }
+.pl-btn {
+  background: none; border: none; color: #fff; cursor: pointer; font-size: 15px;
+  width: 34px; height: 34px; border-radius: 9px; display: flex;
+  align-items: center; justify-content: center; flex: none;
+}
+.pl-btn:hover { background: rgba(255, 255, 255, .16); }
+.pl-btn.pl-text { width: auto; padding: 0 11px; font-size: 13px; }
+.pl-time {
+  font-size: 12px; color: #e8e8f2; font-variant-numeric: tabular-nums;
+  margin-left: 2px; white-space: nowrap;
+}
+.pl-grow { flex: 1; }
+.pl-vol { display: flex; align-items: center; gap: 4px; }
+.pl-vol-track {
+  position: relative; width: 62px; height: 4px; border-radius: 2px;
+  background: rgba(255, 255, 255, .28); cursor: pointer; touch-action: none;
+}
+.pl-vol-fill {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 100%;
+  background: #fff; border-radius: 2px;
+}
+.pl-vol-thumb {
+  position: absolute; top: 50%; left: 100%; width: 11px; height: 11px;
+  border-radius: 50%; background: #fff; transform: translate(-50%, -50%);
+}
+.pl-menu-wrap { position: relative; flex: none; }
+.pl-menu {
+  position: absolute; right: 0; bottom: 42px; display: none; min-width: 128px;
+  background: rgba(24, 24, 34, .96); border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 12px; padding: 6px; backdrop-filter: blur(10px);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, .45);
+}
+.pl-menu-item {
+  padding: 8px 13px; font-size: 13px; color: #d7d7e6;
+  border-radius: 8px; cursor: pointer; white-space: nowrap;
+}
+.pl-menu-item:hover { background: rgba(255, 255, 255, .12); color: #fff; }
+.pl-menu-item.on { color: #b3a8ff; background: rgba(108, 92, 231, .22); }
+.player-error {
+  position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px;
+  align-items: center; justify-content: center; background: rgba(0, 0, 0, .55);
+  color: #ffc9c9; font-size: 14px; padding: 24px; text-align: center; line-height: 1.7;
+}
+.player-error small { color: #9898ac; font-size: 12px; }
+.player-foot {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px; border-top: 1px solid rgba(255, 255, 255, .07);
+}
+.player-link-details { flex: 1; min-width: 0; color: #8b8ba3; font-size: 12px; }
+.player-link-details summary { cursor: pointer; user-select: none; }
+.player-link {
+  margin-top: 8px; padding: 8px 10px; border-radius: 8px; word-break: break-all;
+  background: rgba(255, 255, 255, .06); color: #b7b7cc;
+  font-family: Consolas, monospace; font-size: 11px; max-height: 88px; overflow: auto;
+}
+.player-actions { display: flex; gap: 8px; flex: none; }
+.btn-ghost {
+  padding: 8px 14px; border-radius: 10px; cursor: pointer; text-decoration: none;
+  background: rgba(255, 255, 255, .08); color: #e4e4f0; border: none; font-size: 13px;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.btn-ghost:hover { background: rgba(255, 255, 255, .16); color: #fff; }
+
+/* 在线浏览列表微调 */
+.drive-kind {
+  font-size: 11px; padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+  background: #f1f0fd; color: #6c5ce7;
+}
+.drive-kind.muted { background: #f4f5f7; color: #7d8590; }
+
 /* 去重组 */
 .dup-group {
   border: 1px solid #eee; border-radius: 10px;
@@ -207,6 +386,7 @@ body {
   <!-- 标签页 -->
   <div class="tabs">
     <div class="tab active" data-tab="tree">📂 目录空间</div>
+    <div class="tab" data-tab="drive">🎬 在线播放</div>
     <div class="tab" data-tab="dedup">🔍 文件去重</div>
     <div class="tab" data-tab="largest">📊 大文件</div>
     <div class="tab" data-tab="search">🔎 搜索</div>
@@ -248,6 +428,20 @@ body {
       <div class="empty-state">
         <div class="icon">📊</div>
         <p>暂无数据，请先扫描网盘</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 在线播放 -->
+  <div class="tab-content" id="tab-drive">
+    <div id="drive-status"></div>
+    <div class="breadcrumb" id="drive-breadcrumb">
+      <span onclick="driveNavigate(0)" style="cursor:pointer">🏠 根目录</span>
+    </div>
+    <div id="drive-container">
+      <div class="empty-state">
+        <div class="icon">🎬</div>
+        <p>正在连接网盘...</p>
       </div>
     </div>
   </div>
@@ -343,6 +537,31 @@ body {
   </div>
 </div>
 
+<!-- 在线播放弹层 -->
+<div class="player-overlay" id="player-overlay" style="display:none" onclick="if(event.target===this)closePlayer()">
+  <div class="player-modal">
+    <div class="player-head">
+      <div class="player-icon" id="player-icon">🎬</div>
+      <div class="player-titles">
+        <div class="player-title" id="player-title">加载中...</div>
+        <div class="player-meta" id="player-meta"></div>
+      </div>
+      <button class="player-close" onclick="closePlayer()" title="关闭 (Esc)">✕</button>
+    </div>
+    <div class="player-stage" id="player-stage"></div>
+    <div class="player-foot">
+      <details class="player-link-details">
+        <summary>🔗 播放直链（可复制到外部播放器）</summary>
+        <div class="player-link" id="player-link"></div>
+      </details>
+      <div class="player-actions">
+        <button class="btn-ghost" onclick="copyPlayerLink()">📋 复制链接</button>
+        <a class="btn-ghost" id="player-open" href="#" target="_blank" rel="noopener">↗ 新窗口打开</a>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 // ============================================================
 // 工具函数
@@ -374,6 +593,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     const name = tab.dataset.tab;
     if (!_loaded[name]) {
       _loaded[name] = true;
+      if (name === 'drive') loadDrive();
       if (name === 'dedup') loadDedup();
       if (name === 'largest') loadLargest();
     }
@@ -385,6 +605,17 @@ document.querySelectorAll('.tab').forEach(tab => {
 // ============================================================
 let treeData = [];
 let currentPath = '';
+let dirFilesState = { offset: 0, total: 0, loading: false };
+let _navSeq = 0;
+
+// HTML/JS 转义，文件名是外部数据，避免拼接出错或注入
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function jsq(s) {
+  return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
 
 // ============================================================
 // API 调用
@@ -425,19 +656,9 @@ async function loadTree() {
 }
 
 function renderTree() {
-  // 按当前路径过滤，只显示直接子目录
-  const children = treeData.filter(d => {
-    if (currentPath === '') {
-      return d.depth === 1;
-    }
-    return d.parentPath === currentPath;
-  });
-
-  // 其实我们需要构建父子关系
-  // 重新实现：显示 currentPath 下的直接子目录
   const container = $('tree-container');
 
-  // 构建 parent 映射
+  // 显示 currentPath 下的直接子目录
   const items = treeData.filter(d => {
     if (currentPath === '') return d.depth === 1;
     // 子目录 = parent 正好是 currentPath
@@ -446,38 +667,647 @@ function renderTree() {
     return parent === currentPath;
   });
 
-  if (items.length === 0) {
-    // 没有子目录了，显示该目录的文件？暂时提示
-    container.innerHTML = '<div class="empty-state"><div class="icon">📂</div><p>此目录下没有子目录</p></div>';
-    return;
-  }
-
   // 按 total_bytes 降序
   items.sort((a, b) => b.total_bytes - a.total_bytes);
 
-  container.innerHTML = items.map(d => `
-    <div class="tree-item" onclick="treeNavigate('${d.path}')">
+  const dirHtml = items.map(d => `
+    <div class="tree-item" onclick="treeNavigate('${jsq(d.path)}')">
       <div class="icon">📁</div>
-      <div class="name">${d.name}</div>
+      <div class="name">${esc(d.name)}</div>
       <div class="count">${d.total_files.toLocaleString()} 个文件</div>
       <div class="size">${d.total_size_str}</div>
     </div>
   `).join('');
+
+  if (items.length > 0) {
+    container.innerHTML = dirHtml +
+      '<div class="files-head">📄 目录内文件（按大小排序）</div><div id="dir-files"></div>';
+  } else {
+    // 没有子目录：本目录的文件列表撑起整个视图
+    container.innerHTML = '<div id="dir-files"></div>';
+  }
+  loadDirFiles(true, items.length === 0);
+}
+
+async function loadDirFiles(reset, noSubdirs) {
+  const seq = _navSeq;
+  if (reset) {
+    dirFilesState = { offset: 0, total: 0, loading: false };
+  }
+  if (dirFilesState.loading) return;
+  dirFilesState.loading = true;
+
+  const data = await fetchJSON(`/api/dir_files?path=${encodeURIComponent(currentPath)}&limit=200&offset=${dirFilesState.offset}`);
+  if (seq !== _navSeq) return; // 已切换到别的目录，丢弃过期响应
+  dirFilesState.loading = false;
+
+  const box = $('dir-files');
+  if (!box) return;
+
+  if (!data.ok) {
+    box.innerHTML = `<div class="status-msg error">${esc(data.error || '加载失败')}</div>`;
+    return;
+  }
+
+  dirFilesState.total = data.total;
+
+  if (reset && data.total === 0) {
+    if (noSubdirs) {
+      $('tree-container').innerHTML =
+        '<div class="empty-state"><div class="icon">📂</div><p>此目录下没有子目录和文件</p></div>';
+      return;
+    }
+    box.innerHTML = '<div style="padding:6px 12px;color:#b2bec3;font-size:13px">本目录没有直接文件</div>';
+    return;
+  }
+
+  const rows = data.files.map(f => `
+    <div class="file-item">
+      <div class="icon">📄</div>
+      <div class="name">${esc(f.name)}</div>
+      <div class="size">${f.size_str}</div>
+    </div>
+  `).join('');
+
+  const oldBtn = box.querySelector('.file-more');
+  if (oldBtn) oldBtn.remove();
+  box.insertAdjacentHTML('beforeend', rows);
+
+  if (data.has_more) {
+    const shown = dirFilesState.offset + data.files.length;
+    box.insertAdjacentHTML('beforeend',
+      `<button class="btn btn-secondary file-more" onclick="loadDirFiles(false)">
+         加载更多（已显示 ${shown.toLocaleString()} / ${data.total.toLocaleString()}）
+       </button>`);
+    dirFilesState.offset = shown;
+  }
 }
 
 function treeNavigate(path) {
   currentPath = path;
+  _navSeq++; // 使未完成的文件请求失效
   // 更新面包屑
   const parts = path ? path.split('/') : [];
   let html = '<span onclick="treeNavigate(\'\')">🏠 根目录</span>';
   let acc = '';
   for (const p of parts) {
     acc = acc ? acc + '/' + p : p;
-    html += `<span class="sep">/</span><span onclick="treeNavigate('${acc}')">${p}</span>`;
+    html += `<span class="sep">/</span><span onclick="treeNavigate('${jsq(acc)}')">${esc(p)}</span>`;
   }
   $('tree-breadcrumb').innerHTML = html;
   renderTree();
 }
+
+// ============================================================
+// 在线播放（实时浏览网盘，不依赖本地扫描库）
+// ============================================================
+let driveStack = [{ id: '', name: '根目录' }];
+let driveNextToken = '';
+let driveLoading = false;
+
+function driveKindIcon(item) {
+  if (item.kind === 'folder') return '📁';
+  const m = (item.mime_type || '').toLowerCase();
+  const n = (item.name || '').toLowerCase();
+  if (m.startsWith('video/') || /\.(mp4|webm|mov|m4v|mkv|avi|flv|ogv)$/.test(n)) return '🎬';
+  if (m.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|bmp)$/.test(n)) return '🖼';
+  if (m.startsWith('audio/') || /\.(mp3|wav|flac|m4a|aac|ogg)$/.test(n)) return '🎵';
+  return '📄';
+}
+
+function driveKindLabel(item) {
+  const k = playerKind(item.name, item.mime_type);
+  return { video: '视频', image: '图片', audio: '音频', file: '文件' }[k] || '文件';
+}
+
+function renderDriveBreadcrumb() {
+  let html = '';
+  driveStack.forEach((s, i) => {
+    html += (i ? '<span class="sep">/</span>' : '') +
+      `<span onclick="driveNavigate(${i})" style="cursor:pointer">${esc(s.name)}</span>`;
+  });
+  $('drive-breadcrumb').innerHTML = html;
+}
+
+async function loadDrive(append) {
+  if (driveLoading) return;
+  driveLoading = true;
+  const container = $('drive-container');
+  if (!append) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>正在加载网盘内容...</p></div>';
+    driveNextToken = '';
+    renderDriveBreadcrumb();
+  }
+  const cur = driveStack[driveStack.length - 1];
+  const params = new URLSearchParams({ folder_id: cur.id || '', size: '200' });
+  if (append && driveNextToken) params.set('page_token', driveNextToken);
+  const data = await fetchJSON('/api/drive/list?' + params.toString());
+  driveLoading = false;
+
+  if (!data.ok) {
+    container.innerHTML = `
+      <div class="status-msg error">${esc(data.error || '加载失败')}</div>
+      ${data.hint ? `<div class="status-msg info">💡 ${esc(data.hint)}</div>` : ''}
+      <div style="text-align:center;margin-top:12px">
+        <button class="btn btn-primary" onclick="document.querySelector('[data-tab=scan]').click()">前往登录 / 导入 Token</button>
+      </div>`;
+    return;
+  }
+
+  driveNextToken = data.next_page_token || '';
+  const rows = data.items.map(item => {
+    if (item.kind === 'folder') {
+      return `
+        <div class="tree-item" onclick="driveEnter('${jsq(item.id)}', '${jsq(item.name)}')">
+          <div class="icon">📁</div>
+          <div class="name">${esc(item.name)}</div>
+          <div class="count">文件夹</div>
+        </div>`;
+    }
+    return `
+      <div class="tree-item" onclick="driveOpen('${jsq(item.id)}', '${jsq(item.name)}', '${jsq(item.mime_type)}')">
+        <div class="icon">${driveKindIcon(item)}</div>
+        <div class="name">${esc(item.name)}</div>
+        <div class="drive-kind">${driveKindLabel(item)}</div>
+        <div class="size">${fmtSize(item.size)}</div>
+      </div>`;
+  }).join('');
+
+  const more = driveNextToken
+    ? '<button class="btn btn-secondary file-more" onclick="loadDrive(true)">加载更多</button>'
+    : '';
+
+  if (append) {
+    const oldBtn = container.querySelector('.file-more');
+    if (oldBtn) oldBtn.remove();
+    const empty = container.querySelector('.empty-state');
+    if (empty) empty.remove();
+    container.insertAdjacentHTML('beforeend', rows + more);
+  } else if (!rows) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">📂</div><p>此目录为空</p></div>';
+  } else {
+    container.innerHTML = rows + more;
+  }
+}
+
+function driveEnter(id, name) {
+  driveStack.push({ id: id, name: name });
+  loadDrive(false);
+}
+
+function driveNavigate(index) {
+  driveStack = driveStack.slice(0, index + 1);
+  loadDrive(false);
+}
+
+function fmtDur(sec) {
+  sec = Math.round(Number(sec) || 0);
+  if (sec < 0) sec = 0;
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0');
+}
+
+let playerState = { sources: [], idx: 0, url: '', kind: 'file' };
+
+function playerKind(name, mime) {
+  const m = (mime || '').toLowerCase(), n = (name || '').toLowerCase();
+  if (m.startsWith('video/') || /\.(mp4|webm|mov|m4v|mkv|avi|flv|ogv)$/.test(n)) return 'video';
+  if (m.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|bmp)$/.test(n)) return 'image';
+  if (m.startsWith('audio/') || /\.(mp3|wav|flac|m4a|aac|ogg)$/.test(n)) return 'audio';
+  return 'file';
+}
+
+async function driveOpen(id, name, mime) {
+  const kind = playerKind(name, mime);
+  playerState = { sources: [], idx: 0, url: '', kind: kind };
+  $('player-icon').textContent = { video: '🎬', image: '🖼', audio: '🎵', file: '📄' }[kind];
+  $('player-title').textContent = name;
+  $('player-title').title = name;
+  $('player-meta').textContent = '正在获取播放链接...';
+  $('player-link').textContent = '';
+  $('player-open').href = '#';
+  $('player-stage').innerHTML = '<div class="pl-loading" style="display:flex"><div class="spinner"></div>正在获取播放链接...</div>';
+  $('player-overlay').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+
+  const data = await fetchJSON('/api/drive/file?id=' + encodeURIComponent(id));
+  if (!data.ok) {
+    $('player-meta').textContent = '';
+    $('player-stage').innerHTML = `<div class="player-error">😥 ${esc(data.error || '获取失败')}<small>${esc(data.hint || '')}</small></div>`;
+    return;
+  }
+
+  const sources = [];
+  for (const m of data.medias || []) {
+    if (m.url) sources.push({ label: m.name || '流', url: m.url, meta: m });
+  }
+  if (!sources.length && data.web_content_link) {
+    sources.push({ label: '直链', url: data.web_content_link, meta: {} });
+  }
+  playerState.sources = sources;
+  playerState.idx = 0;
+  playerState.url = sources.length ? sources[0].url : '';
+
+  const m0 = sources.length ? sources[0].meta : {};
+  $('player-meta').textContent = [
+    fmtSize(data.size),
+    m0.duration ? fmtDur(m0.duration) : '',
+    m0.width ? `${m0.width}×${m0.height}` : '',
+    m0.video_codec ? String(m0.video_codec).toUpperCase() : '',
+  ].filter(Boolean).join(' · ');
+  $('player-link').textContent = playerState.url;
+  $('player-open').href = playerState.url || '#';
+  renderPlayerStage();
+}
+
+// ============================================================
+// 播放器（B 站风格：拖动进度 / 倍速 / 清晰度 / 音量 / 全屏 / 快捷键）
+// ============================================================
+const PL_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+const plPrefs = { speed: 1, volume: 1, muted: false };
+let plHideTimer = null;
+
+function plFmtRate(s) { return (Number.isInteger(s) ? s.toFixed(1) : String(s)) + '×'; }
+function plVid() { return $('player-video'); }
+
+function plPaint() {
+  const v = plVid();
+  if (!v) return;
+  const d = v.duration || 0, t = v.currentTime || 0;
+  const pct = d ? (t / d) * 100 : 0;
+  const played = $('pl-seek-played'), thumb = $('pl-seek-thumb');
+  if (played) played.style.width = pct + '%';
+  if (thumb) thumb.style.left = pct + '%';
+  const time = $('pl-time');
+  if (time) time.textContent = fmtDur(t) + ' / ' + fmtDur(d);
+  try {
+    if (v.buffered.length) {
+      const buf = $('pl-seek-buf');
+      if (buf) buf.style.width = (d ? (v.buffered.end(v.buffered.length - 1) / d) * 100 : 0) + '%';
+    }
+  } catch (e) {}
+}
+
+function plSyncPlayBtn() {
+  const v = plVid();
+  if (!v) return;
+  const btn = $('pl-play'), big = $('pl-bigplay');
+  if (btn) btn.textContent = v.paused ? '▶' : '❚❚';
+  if (big) big.style.display = v.paused ? 'flex' : 'none';
+  if (v.paused) plShowCtrl(true);
+  else plScheduleHide();
+}
+
+function plVolPaint() {
+  const v = plVid();
+  const fill = $('pl-vol-fill'), thumb = $('pl-vol-thumb'), mute = $('pl-mute');
+  if (!fill) return;
+  const pct = (plPrefs.muted ? 0 : plPrefs.volume) * 100;
+  fill.style.width = pct + '%';
+  thumb.style.left = pct + '%';
+  if (mute) mute.textContent = pct === 0 ? '🔇' : (pct < 50 ? '🔉' : '🔊');
+  if (v) { v.volume = plPrefs.volume; v.muted = plPrefs.muted; }
+}
+
+function plShowCtrl(stick) {
+  const ctrl = $('pl-ctrl'), wrap = $('pl-wrap');
+  if (!ctrl) return;
+  ctrl.classList.remove('hide');
+  if (wrap) wrap.classList.remove('hide-cursor');
+  clearTimeout(plHideTimer);
+  const v = plVid();
+  if (!stick && v && !v.paused) plScheduleHide();
+}
+
+function plScheduleHide() {
+  clearTimeout(plHideTimer);
+  plHideTimer = setTimeout(() => {
+    const v = plVid();
+    const menuOpen = document.querySelector('.pl-menu[style*="block"]');
+    if (v && !v.paused && !menuOpen) {
+      const ctrl = $('pl-ctrl'), wrap = $('pl-wrap');
+      if (ctrl) ctrl.classList.add('hide');
+      if (wrap) wrap.classList.add('hide-cursor');
+    }
+  }, 2600);
+}
+
+function plTogglePlay() {
+  const v = plVid();
+  if (!v) return;
+  if (v.paused) v.play().catch(() => {});
+  else v.pause();
+}
+
+function plToggleFs() {
+  const stage = $('player-stage');
+  if (!stage) return;
+  if (document.fullscreenElement) document.exitFullscreen();
+  else if (stage.requestFullscreen) stage.requestFullscreen();
+  else if (stage.webkitRequestFullscreen) stage.webkitRequestFullscreen();
+}
+
+function plCloseMenus() {
+  document.querySelectorAll('.pl-menu').forEach(m => { m.style.display = 'none'; });
+}
+
+function plSetSpeed(s) {
+  const v = plVid();
+  plPrefs.speed = s;
+  if (v) v.playbackRate = s;
+  const btn = $('pl-speed-btn');
+  if (btn) btn.textContent = plFmtRate(s);
+  document.querySelectorAll('#pl-speed-menu .pl-menu-item')
+    .forEach(x => x.classList.toggle('on', parseFloat(x.dataset.v) === s));
+  plCloseMenus();
+}
+
+function plSeekToFrac(frac) {
+  const v = plVid();
+  if (!v || !v.duration) return;
+  v.currentTime = Math.max(0, Math.min(1, frac)) * v.duration;
+  plPaint();
+}
+
+function switchPlayerSource(i, keepTime) {
+  if (!playerState.sources[i] && i !== playerState.idx) return;
+  const v0 = plVid();
+  const t = (keepTime && v0 && v0.duration) ? v0.currentTime : 0;
+  const wasPlaying = v0 ? !v0.paused : false;
+  playerState.idx = i;
+  playerState.url = playerState.sources[i].url;
+  $('player-link').textContent = playerState.url;
+  $('player-open').href = playerState.url;
+  renderPlayerStage();
+  if (playerState.kind === 'video' && t > 0) {
+    const v1 = plVid();
+    if (v1) {
+      v1.addEventListener('loadedmetadata', () => {
+        if (v1.duration) v1.currentTime = Math.min(t, v1.duration - 0.1);
+        plPaint();
+        if (wasPlaying) v1.play().catch(() => {});
+        else plSyncPlayBtn();
+      }, { once: true });
+    }
+  }
+}
+
+function renderPlayerStage() {
+  const stage = $('player-stage');
+  const s = playerState.sources[playerState.idx];
+  const kind = playerState.kind;
+  clearTimeout(plHideTimer);
+  if (!s) {
+    stage.innerHTML = '<div class="player-error">😥 没有可用的播放直链<small>可尝试重新打开，或到网盘确认文件是否有效</small></div>';
+    return;
+  }
+  if (kind === 'video') {
+    const multi = playerState.sources.length > 1;
+    stage.innerHTML = `
+      <div class="pl-wrap" id="pl-wrap">
+        <video id="player-video" preload="metadata" playsinline src="${esc(s.url)}"></video>
+        <div class="pl-loading" id="pl-loading"><div class="spinner"></div>缓冲中...</div>
+        <button class="pl-bigplay" id="pl-bigplay" title="播放 (空格)">▶</button>
+        <div class="pl-ctrl" id="pl-ctrl">
+          <div class="pl-seek" id="pl-seek">
+            <div class="pl-seek-track">
+              <div class="pl-seek-buf" id="pl-seek-buf"></div>
+              <div class="pl-seek-played" id="pl-seek-played"></div>
+              <div class="pl-seek-thumb" id="pl-seek-thumb"></div>
+            </div>
+            <div class="pl-seek-tip" id="pl-seek-tip">0:00</div>
+          </div>
+          <div class="pl-bar-row">
+            <button class="pl-btn" id="pl-play" title="播放/暂停 (空格)">▶</button>
+            <span class="pl-time" id="pl-time">0:00 / 0:00</span>
+            <div class="pl-grow"></div>
+            <div class="pl-vol">
+              <button class="pl-btn" id="pl-mute" title="静音 (M)">🔊</button>
+              <div class="pl-vol-track" id="pl-vol-track">
+                <div class="pl-vol-fill" id="pl-vol-fill"></div>
+                <div class="pl-vol-thumb" id="pl-vol-thumb"></div>
+              </div>
+            </div>
+            <div class="pl-menu-wrap">
+              <button class="pl-btn pl-text" id="pl-speed-btn" title="播放速度">${plFmtRate(plPrefs.speed)}</button>
+              <div class="pl-menu" id="pl-speed-menu">
+                ${PL_SPEEDS.map(v2 => `<div class="pl-menu-item ${v2 === plPrefs.speed ? 'on' : ''}" data-v="${v2}">${plFmtRate(v2)}</div>`).join('')}
+              </div>
+            </div>
+            ${multi ? `
+            <div class="pl-menu-wrap">
+              <button class="pl-btn pl-text" id="pl-qual-btn" title="清晰度">清晰度</button>
+              <div class="pl-menu" id="pl-qual-menu">
+                ${playerState.sources.map((x, i) => `
+                  <div class="pl-menu-item ${i === playerState.idx ? 'on' : ''}" data-i="${i}">
+                    ${esc(x.label)}${x.meta.video_codec ? ' · ' + esc(String(x.meta.video_codec).toUpperCase()) : ''}
+                  </div>`).join('')}
+              </div>
+            </div>` : ''}
+            <button class="pl-btn" id="pl-fs" title="全屏 (F)">⛶</button>
+          </div>
+        </div>
+      </div>`;
+
+    const v = $('player-video');
+    v.volume = plPrefs.volume;
+    v.muted = plPrefs.muted;
+    v.playbackRate = plPrefs.speed;
+
+    // 视频状态
+    v.ontimeupdate = plPaint;
+    v.onloadedmetadata = plPaint;
+    v.onprogress = plPaint;
+    v.onwaiting = () => { const l = $('pl-loading'); if (l) l.style.display = 'flex'; };
+    v.onplaying = () => { const l = $('pl-loading'); if (l) l.style.display = 'none'; plSyncPlayBtn(); };
+    v.oncanplay = () => { const l = $('pl-loading'); if (l) l.style.display = 'none'; };
+    v.onplay = plSyncPlayBtn;
+    v.onpause = plSyncPlayBtn;
+    v.onerror = () => playerSourceFailed();
+    plSyncPlayBtn();
+    plVolPaint();
+    plPaint();
+
+    // 播放/暂停
+    $('pl-bigplay').addEventListener('click', e => { e.stopPropagation(); plTogglePlay(); });
+    $('pl-play').addEventListener('click', e => { e.stopPropagation(); plTogglePlay(); });
+
+    // 点击画面播放/暂停，双击全屏
+    $('pl-wrap').addEventListener('click', e => {
+      if (e.target.closest('.pl-ctrl') || e.target.closest('.pl-bigplay')) return;
+      plTogglePlay();
+    });
+    $('pl-wrap').addEventListener('dblclick', e => {
+      if (e.target.closest('.pl-ctrl')) return;
+      plToggleFs();
+    });
+
+    // 进度条拖动 + 悬浮时间提示
+    const seek = $('pl-seek');
+    let seekDrag = false;
+    const seekFrac = e => {
+      const r = seek.getBoundingClientRect();
+      return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    };
+    const seekMove = e => {
+      const f = seekFrac(e);
+      const tip = $('pl-seek-tip');
+      tip.style.display = 'block';
+      tip.style.left = (f * 100) + '%';
+      tip.textContent = fmtDur((v.duration || 0) * f);
+      if (seekDrag) plSeekToFrac(f);
+    };
+    seek.addEventListener('pointerdown', e => {
+      seekDrag = true;
+      seek.classList.add('dragging');
+      seek.setPointerCapture(e.pointerId);
+      plSeekToFrac(seekFrac(e));
+      plShowCtrl(true);
+    });
+    seek.addEventListener('pointermove', seekMove);
+    seek.addEventListener('pointerup', e => {
+      seekDrag = false;
+      seek.classList.remove('dragging');
+      try { seek.releasePointerCapture(e.pointerId); } catch (err) {}
+      plScheduleHide();
+    });
+    seek.addEventListener('pointerleave', () => {
+      const tip = $('pl-seek-tip');
+      if (tip && !seekDrag) tip.style.display = 'none';
+    });
+
+    // 音量拖动
+    const vt = $('pl-vol-track');
+    let volDrag = false;
+    const volFrac = e => {
+      const r = vt.getBoundingClientRect();
+      return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    };
+    const volApply = f => {
+      plPrefs.volume = f;
+      plPrefs.muted = f === 0;
+      plVolPaint();
+    };
+    vt.addEventListener('pointerdown', e => {
+      volDrag = true;
+      vt.setPointerCapture(e.pointerId);
+      volApply(volFrac(e));
+    });
+    vt.addEventListener('pointermove', e => { if (volDrag) volApply(volFrac(e)); });
+    vt.addEventListener('pointerup', e => {
+      volDrag = false;
+      try { vt.releasePointerCapture(e.pointerId); } catch (err) {}
+    });
+    $('pl-mute').addEventListener('click', e => {
+      e.stopPropagation();
+      plPrefs.muted = !plPrefs.muted;
+      plVolPaint();
+    });
+
+    // 倍速 / 清晰度菜单
+    $('pl-speed-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      const m = $('pl-speed-menu');
+      const open = m.style.display === 'block';
+      plCloseMenus();
+      m.style.display = open ? 'none' : 'block';
+    });
+    $('pl-speed-menu').addEventListener('click', e => {
+      const it = e.target.closest('.pl-menu-item');
+      if (it) plSetSpeed(parseFloat(it.dataset.v));
+    });
+    if (multi) {
+      $('pl-qual-btn').addEventListener('click', e => {
+        e.stopPropagation();
+        const m = $('pl-qual-menu');
+        const open = m.style.display === 'block';
+        plCloseMenus();
+        m.style.display = open ? 'none' : 'block';
+      });
+      $('pl-qual-menu').addEventListener('click', e => {
+        const it = e.target.closest('.pl-menu-item');
+        if (!it) return;
+        plCloseMenus();
+        switchPlayerSource(parseInt(it.dataset.i, 10), true);
+      });
+    }
+    $('pl-fs').addEventListener('click', e => { e.stopPropagation(); plToggleFs(); });
+
+    // 控制栏自动隐藏
+    $('pl-wrap').addEventListener('mousemove', () => plShowCtrl());
+    $('pl-wrap').addEventListener('mouseleave', () => {
+      const vv = plVid();
+      if (vv && !vv.paused) {
+        const ctrl = $('pl-ctrl');
+        if (ctrl) ctrl.classList.add('hide');
+      }
+    });
+  } else if (kind === 'image') {
+    stage.innerHTML = `<img src="${esc(s.url)}" alt="" onerror="playerSourceFailed()">`;
+  } else if (kind === 'audio') {
+    stage.innerHTML = `<audio controls preload="metadata" src="${esc(s.url)}" onerror="playerSourceFailed()"></audio>`;
+  } else {
+    stage.innerHTML = '<div class="player-error">此格式不支持在线预览<small>请复制直链到外部播放器打开</small></div>';
+  }
+}
+
+function playerSourceFailed() {
+  if (playerState.idx + 1 < playerState.sources.length) {
+    switchPlayerSource(playerState.idx + 1);
+    return;
+  }
+  $('player-stage').innerHTML = '<div class="player-error">😥 浏览器无法播放此文件<small>可能是编码不受支持（如 H.265），可复制直链用 PotPlayer / VLC 等播放</small></div>';
+}
+
+function copyPlayerLink() {
+  if (playerState.url) navigator.clipboard.writeText(playerState.url);
+}
+
+function closePlayer() {
+  clearTimeout(plHideTimer);
+  const v = plVid();
+  if (v) v.pause();
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  $('player-overlay').style.display = 'none';
+  $('player-stage').innerHTML = '';
+  document.body.style.overflow = '';
+}
+
+document.addEventListener('keydown', e => {
+  if ($('player-overlay').style.display === 'none') return;
+  const v = plVid();
+  switch (e.key) {
+    case 'Escape':
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      else closePlayer();
+      break;
+    case ' ': case 'k': case 'K':
+      if (v) { e.preventDefault(); plTogglePlay(); }
+      break;
+    case 'ArrowRight':
+      if (v && v.duration) { v.currentTime = Math.min(v.duration, v.currentTime + 5); plShowCtrl(); }
+      break;
+    case 'ArrowLeft':
+      if (v && v.duration) { v.currentTime = Math.max(0, v.currentTime - 5); plShowCtrl(); }
+      break;
+    case 'ArrowUp':
+      if (v) { e.preventDefault(); plPrefs.volume = Math.min(1, plPrefs.volume + 0.05); plPrefs.muted = false; plVolPaint(); plShowCtrl(); }
+      break;
+    case 'ArrowDown':
+      if (v) { e.preventDefault(); plPrefs.volume = Math.max(0, plPrefs.volume - 0.05); plVolPaint(); plShowCtrl(); }
+      break;
+    case 'f': case 'F':
+      plToggleFs();
+      break;
+    case 'm': case 'M':
+      if (v) { plPrefs.muted = !plPrefs.muted; plVolPaint(); plShowCtrl(); }
+      break;
+  }
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.pl-menu-wrap')) plCloseMenus();
+});
 
 // ============================================================
 // 去重
@@ -815,7 +1645,11 @@ async function importToken() {
   if (res.ok) {
     $('login-status').innerHTML = `<div class="status-msg success">✅ Token 导入成功！网盘容量: ${res.quota.usage_gb} GB / ${res.quota.limit_gb} GB</div>`;
   } else {
-    $('login-status').innerHTML = `<div class="status-msg error">❌ ${res.error}</div>`;
+    let html = `<div class="status-msg error">❌ ${res.error}</div>`;
+    if (res.hint) {
+      html += `<div class="status-msg info">💡 ${res.hint}</div>`;
+    }
+    $('login-status').innerHTML = html;
   }
 }
 

@@ -117,6 +117,35 @@ def get_root_summary(db_path=None):
     }
 
 
+def list_directory_files(parent_path, limit=200, offset=0, db_path=None):
+    """列出某目录下的直接文件（按大小降序，分页）。"""
+    conn = _conn(db_path)
+    total = conn.execute(
+        "SELECT COUNT(*) AS cnt FROM files WHERE parent_path = ?",
+        (parent_path,),
+    ).fetchone()["cnt"]
+    rows = conn.execute(
+        "SELECT id, name, size, mime_type FROM files "
+        "WHERE parent_path = ? ORDER BY size DESC, name LIMIT ? OFFSET ?",
+        (parent_path, limit, offset),
+    ).fetchall()
+    conn.close()
+    return {
+        "total": total,
+        "files": [
+            {
+                "id": r["id"],
+                "name": r["name"],
+                "size": r["size"],
+                "size_str": fmt_size(r["size"]),
+                "mime_type": r["mime_type"],
+            }
+            for r in rows
+        ],
+        "has_more": offset + len(rows) < total,
+    }
+
+
 # ============================================================
 # 文件名 + 大小去重
 # ============================================================
