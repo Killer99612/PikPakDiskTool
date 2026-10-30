@@ -282,12 +282,12 @@ body {
 
     <!-- 切换：API 登录 vs 手动 token -->
     <div style="display:flex;gap:8px;margin-bottom:16px">
-      <button class="btn btn-secondary" id="btn-mode-api" onclick="switchLoginMode('api')">🔑 API 登录</button>
-      <button class="btn btn-primary" id="btn-mode-token" onclick="switchLoginMode('token')">🎫 手动导入 Token</button>
+      <button class="btn btn-primary" id="btn-mode-api" onclick="switchLoginMode('api')">🔑 邮箱密码登录</button>
+      <button class="btn btn-secondary" id="btn-mode-token" onclick="switchLoginMode('token')">🎫 手动导入 Token</button>
     </div>
 
     <!-- API 登录 -->
-    <div id="login-api" style="display:none">
+    <div id="login-api">
       <div class="login-form" style="margin:0">
         <div class="form-group">
           <label>邮箱</label>
@@ -302,11 +302,12 @@ body {
           <input type="text" id="login-device" placeholder="32位固定字符串">
         </div>
         <button class="btn btn-primary" onclick="doLogin()">登录</button>
+        <div id="login-hint" style="margin-top:12px"></div>
       </div>
     </div>
 
     <!-- 手动 token 导入 -->
-    <div id="login-token">
+    <div id="login-token" style="display:none">
       <div class="status-msg info" style="margin-bottom:16px">
         💡 <b>获取方法</b>：浏览器打开 <a href="https://mypikpak.com" target="_blank">mypikpak.com</a> 并登录 →
         按 <b>F12</b> 打开开发者工具 → <b>Application</b> → <b>Local Storage</b> → 找到 <code>token</code> 或 <code>credentials</code>，
@@ -769,6 +770,8 @@ async function doLogin() {
     return;
   }
 
+  $('login-status').innerHTML = '<div class="status-msg info">⏳ 正在登录...</div>';
+
   const res = await fetchJSON('/api/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -778,7 +781,12 @@ async function doLogin() {
   if (res.ok) {
     $('login-status').innerHTML = `<div class="status-msg success">✅ 登录成功！网盘容量: ${res.quota.usage_gb} GB / ${res.quota.limit_gb} GB</div>`;
   } else {
-    $('login-status').innerHTML = `<div class="status-msg error">❌ 登录失败：${res.error}</div>`;
+    let hintHtml = `<div class="status-msg error">❌ 密码登录失败：${res.error}</div>`;
+    if (res.hint) {
+      hintHtml += `<div class="status-msg info">💡 ${res.hint}</div>`;
+    }
+    hintHtml += `<button class="btn btn-primary" onclick="switchLoginMode('token')" style="margin-top:8px">🎫 切换到手动导入 Token</button>`;
+    $('login-status').innerHTML = hintHtml;
   }
 }
 
@@ -811,8 +819,8 @@ async function importToken() {
   }
 }
 
-// 默认显示 token 导入方式
-switchLoginMode('token');
+// 默认显示密码登录
+switchLoginMode('api');
 
 // ============================================================
 // 初始化

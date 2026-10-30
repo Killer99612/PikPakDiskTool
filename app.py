@@ -361,34 +361,71 @@ def api_login():
         return jsonify({"ok": False, "error": "请填写邮箱和密码"})
 
     def do_login():
-        from pikpakapi import PikPakApi
         import json as _json
+        import pikpakapi as _pik
+        from pikpakapi import PikPakApi
+
+        # 用正确的 client_id
+        _pik.CLIENT_ID = getattr(config, "PIKPAK_CLIENT_ID", "YUMx5nl8ZU8Ap8pm")
 
         client = PikPakApi(username=username, password=password, device_id=device_id)
 
         async def _login():
+            # 1. 先获取 captcha_token
+            try:
+                result = await client.captcha_init(action="POST:/v1/auth/signin")
+                client.captcha_token = result.get("captcha_token", "")
+            except Exception:
+                pass  # captcha 失败不阻止登录尝试
+
+            # 2. 密码登录
             await client.login()
+
+            # 3. 验证 token 有效
             quota = await client.get_quota_info()
             q = quota.get("quota", {})
+
             # 保存 token
-            data_dict = client.to_dict()
+            data_dict = {
+                "access_token": client.access_token,
+                "refresh_token": client.refresh_token,
+                "username": username,
+                "password": password,
+                "device_id": device_id,
+                "user_id": client.user_id,
+            }
+            if client.captcha_token:
+                data_dict["captcha_token"] = client.captcha_token
             with open(config.TOKEN_PATH, "w", encoding="utf-8") as f:
                 _json.dump(data_dict, f, ensure_ascii=False, indent=2)
+
             usage = int(q.get("usage", 0))
             limit = int(q.get("limit", 0))
             await client.httpx_client.aclose()
             return {
                 "usage_gb": round(usage / (1024**3), 2),
                 "limit_gb": round(limit / (1024**3), 2),
+                "method": "password",
             }
 
         return _run_async(_login())
 
     try:
-        quota = do_login()
-        return jsonify({"ok": True, "quota": quota})
+        result = do_login()
+        return jsonify({"ok": True, "quota": result, "msg": "密码登录成功"})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
+        err = str(e)
+        # 判断错误类型，给出针对性提示
+        hint = ""
+        if "AccessProhibited" in err or "captcha" in err.lower():
+            hint = "API 风控拦截。请改用手动导入 Token 方式（从浏览器复制）。"
+        elif "invalid_account_or_password" in err or "Invalid username" in err:
+            hint = "邮箱或密码错误，请检查。"
+        elif "Verification code" in err:
+            hint = "验证码校验失败。请改用手动导入 Token 方式。"
+        else:
+            hint = "登录失败。如果密码登录不行，请切换到「手动导入 Token」方式。"
+        return jsonify({"ok": False, "error": err, "hint": hint})
 
 
 # ============================================================
