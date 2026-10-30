@@ -1,6 +1,9 @@
 import os
 import sys
 
+# ---------------- 版本（语义化版本 vX.Y.Z，与 git tag / GitHub Release 对应）----------------
+__version__ = "1.0.0"
+
 # ---------------- 项目根目录 ----------------
 # 打包成 EXE 后固定为 EXE 所在目录，保证 data/、config_local.py 都在 EXE 旁边持久化
 if getattr(sys, "frozen", False):

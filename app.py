@@ -40,7 +40,7 @@ def _run_async(coro):
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", version=config.__version__)
 
 
 # ============================================================
