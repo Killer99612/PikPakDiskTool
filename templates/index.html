@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PikPak 磁盘空间分析</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: #f5f6fa; color: #2d3436; line-height: 1.6;
+}
+.header {
+  background: linear-gradient(135deg, #6c5ce7, #a29bfe);
+  color: #fff; padding: 24px 32px;
+}
+.header h1 { font-size: 22px; font-weight: 600; }
+.header p { opacity: .85; margin-top: 4px; font-size: 14px; }
+.container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+
+/* 顶栏统计 */
+.stats { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+.stat-card {
+  background: #fff; border-radius: 12px; padding: 20px 24px;
+  flex: 1; min-width: 180px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.06);
+}
+.stat-card .label { font-size: 13px; color: #636e72; }
+.stat-card .value { font-size: 28px; font-weight: 700; color: #2d3436; margin-top: 4px; }
+
+/* 标签页 */
+.tabs {
+  display: flex; gap: 0; background: #fff;
+  border-radius: 12px 12px 0 0; overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,.06);
+}
+.tab {
+  padding: 14px 24px; cursor: pointer; font-size: 14px; font-weight: 500;
+  color: #636e72; border-bottom: 3px solid transparent; transition: all .2s;
+}
+.tab:hover { color: #6c5ce7; background: #f8f7ff; }
+.tab.active { color: #6c5ce7; border-bottom-color: #6c5ce7; background: #f8f7ff; }
+
+.tab-content {
+  background: #fff; border-radius: 0 0 12px 12px; padding: 24px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.06); display: none; min-height: 400px;
+}
+.tab-content.active { display: block; }
+
+/* 目录树 */
+.tree-item {
+  padding: 8px 12px; border-radius: 8px; cursor: pointer;
+  display: flex; align-items: center; gap: 12px;
+  transition: background .15s; font-size: 14px;
+}
+.tree-item:hover { background: #f8f7ff; }
+.tree-item .icon { font-size: 18px; width: 28px; text-align: center; }
+.tree-item .name { flex: 1; }
+.tree-item .size { font-weight: 600; color: #6c5ce7; font-size: 13px; }
+.tree-item .count { color: #b2bec3; font-size: 12px; }
+.tree-indent { display: inline-block; }
+
+/* 去重组 */
+.dup-group {
+  border: 1px solid #eee; border-radius: 10px;
+  margin-bottom: 12px; overflow: hidden;
+}
+.dup-header {
+  padding: 12px 16px; background: #ffeaa7; cursor: pointer;
+  display: flex; align-items: center; gap: 12px; font-size: 14px;
+}
+.dup-header .dup-name { font-weight: 600; flex: 1; }
+.dup-header .dup-wasted { color: #d63031; font-weight: 600; }
+.dup-header .dup-count {
+  background: #d63031; color: #fff; border-radius: 12px;
+  padding: 2px 10px; font-size: 12px;
+}
+.dup-files {
+  padding: 8px 16px; display: none;
+  background: #fafafa; border-top: 1px solid #eee;
+}
+.dup-files.open { display: block; }
+.dup-file {
+  padding: 6px 0; font-size: 13px; color: #636e72;
+  border-bottom: 1px dashed #eee;
+}
+.dup-file:last-child { border-bottom: none; }
+
+/* 表格 */
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table th {
+  text-align: left; padding: 10px 12px; background: #f8f9fa;
+  color: #636e72; font-weight: 500; border-bottom: 2px solid #eee;
+}
+.data-table td {
+  padding: 10px 12px; border-bottom: 1px solid #f0f0f0;
+}
+.data-table tr:hover td { background: #f8f7ff; }
+.data-table .size-col { text-align: right; font-weight: 600; color: #6c5ce7; }
+.data-table .path-col { color: #636e72; font-size: 12px; max-width: 500px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 按钮 */
+.btn {
+  padding: 10px 20px; border: none; border-radius: 8px;
+  font-size: 14px; font-weight: 500; cursor: pointer; transition: all .2s;
+}
+.btn-primary { background: #6c5ce7; color: #fff; }
+.btn-primary:hover { background: #5a4bd1; }
+.btn-danger { background: #d63031; color: #fff; }
+.btn-danger:hover { background: #c0392b; }
+.btn-secondary { background: #dfe6e9; color: #2d3436; }
+.btn-secondary:hover { background: #b2bec3; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* 搜索框 */
+.search-box {
+  display: flex; gap: 12px; margin-bottom: 16px;
+}
+.search-box input {
+  flex: 1; padding: 10px 16px; border: 2px solid #dfe6e9;
+  border-radius: 8px; font-size: 14px; outline: none; transition: border .2s;
+}
+.search-box input:focus { border-color: #6c5ce7; }
+
+/* 登录表单 */
+.login-form {
+  max-width: 400px; margin: 40px auto;
+}
+.login-form .form-group { margin-bottom: 16px; }
+.login-form label { display: block; font-size: 13px; color: #636e72; margin-bottom: 6px; }
+.login-form input {
+  width: 100%; padding: 10px 14px; border: 2px solid #dfe6e9;
+  border-radius: 8px; font-size: 14px; outline: none;
+}
+.login-form input:focus { border-color: #6c5ce7; }
+
+/* 进度条 */
+.progress-bar {
+  height: 8px; background: #dfe6e9; border-radius: 4px; overflow: hidden; margin: 12px 0;
+}
+.progress-bar .fill {
+  height: 100%; background: linear-gradient(90deg, #6c5ce7, #a29bfe);
+  border-radius: 4px; transition: width .3s;
+}
+.progress-text { font-size: 13px; color: #636e72; }
+
+/* 状态提示 */
+.status-msg {
+  padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 14px;
+}
+.status-msg.info { background: #dfe6e9; color: #2d3436; }
+.status-msg.success { background: #55efc4; color: #00695c; }
+.status-msg.error { background: #fab1a0; color: #c0392b; }
+
+/* 面包屑 */
+.breadcrumb {
+  display: flex; align-items: center; gap: 4px; margin-bottom: 16px;
+  font-size: 13px; color: #636e72; flex-wrap: wrap;
+}
+.breadcrumb span { cursor: pointer; }
+.breadcrumb span:hover { color: #6c5ce7; }
+.breadcrumb .sep { color: #b2bec3; margin: 0 4px; }
+
+/* 加载动画 */
+.spinner {
+  display: inline-block; width: 16px; height: 16px;
+  border: 2px solid #dfe6e9; border-top-color: #6c5ce7;
+  border-radius: 50%; animation: spin .6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* 空状态 */
+.empty-state {
+  text-align: center; padding: 60px 20px; color: #b2bec3;
+}
+.empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🍅 PikPak 磁盘空间分析</h1>
+  <p>目录空间分析 · 文件名去重 · 大文件排行</p>
+</div>
+
+<div class="container">
+  <!-- 统计卡 -->
+  <div class="stats" id="stats">
+    <div class="stat-card">
+      <div class="label">文件总数</div>
+      <div class="value" id="stat-files">--</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">总占用空间</div>
+      <div class="value" id="stat-size">--</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">重复文件组</div>
+      <div class="value" id="stat-dups">--</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">可节省空间</div>
+      <div class="value" id="stat-wasted">--</div>
+    </div>
+  </div>
+
+  <!-- 标签页 -->
+  <div class="tabs">
+    <div class="tab active" data-tab="tree">📂 目录空间</div>
+    <div class="tab" data-tab="dedup">🔍 文件去重</div>
+    <div class="tab" data-tab="largest">📊 大文件</div>
+    <div class="tab" data-tab="search">🔎 搜索</div>
+    <div class="tab" data-tab="scan">⚙️ 扫描/登录</div>
+  </div>
+
+  <!-- 目录空间 -->
+  <div class="tab-content active" id="tab-tree">
+    <div id="tree-status"></div>
+    <div class="breadcrumb" id="tree-breadcrumb">
+      <span onclick="treeNavigate('')" style="cursor:pointer">🏠 根目录</span>
+    </div>
+    <div id="tree-container">
+      <div class="empty-state">
+        <div class="icon">📂</div>
+        <p>暂无数据，请先扫描网盘</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 文件去重 -->
+  <div class="tab-content" id="tab-dedup">
+    <div id="dedup-status"></div>
+    <div style="margin-bottom:16px;display:flex;gap:12px;align-items:center">
+      <button class="btn btn-danger" id="btn-batch-dedup" onclick="batchDedup()">🚀 一键批量去重</button>
+      <span style="font-size:12px;color:#636e72">每组自动保留第一个文件，其余移入回收站</span>
+    </div>
+    <div id="dedup-container">
+      <div class="empty-state">
+        <div class="icon">🔍</div>
+        <p>暂无数据，请先扫描网盘</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 大文件 -->
+  <div class="tab-content" id="tab-largest">
+    <div id="largest-container">
+      <div class="empty-state">
+        <div class="icon">📊</div>
+        <p>暂无数据，请先扫描网盘</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 搜索 -->
+  <div class="tab-content" id="tab-search">
+    <div class="search-box">
+      <input type="text" id="search-input" placeholder="输入文件名关键词搜索..." onkeydown="if(event.key==='Enter')doSearch()">
+      <button class="btn btn-primary" onclick="doSearch()">搜索</button>
+    </div>
+    <div id="search-results"></div>
+  </div>
+
+  <!-- 扫描/登录 -->
+  <div class="tab-content" id="tab-scan">
+    <div id="scan-status"></div>
+
+    <h3 style="margin-bottom:12px">扫描网盘</h3>
+    <p style="font-size:13px;color:#636e72;margin-bottom:16px">
+      遍历整个 PikPak 网盘，收集所有文件的名称、大小、路径等元数据。
+      首次扫描可能需要较长时间，取决于网盘文件数量。
+    </p>
+    <button class="btn btn-primary" id="btn-scan" onclick="startScan()">开始全盘扫描</button>
+    <div class="progress-bar" id="scan-progress-bar" style="display:none">
+      <div class="fill" id="scan-progress-fill" style="width:0%"></div>
+    </div>
+    <div class="progress-text" id="scan-progress-text"></div>
+
+    <hr style="margin:32px 0;border:none;border-top:1px solid #eee">
+
+    <h3 style="margin-bottom:12px">登录 PikPak</h3>
+
+    <!-- 切换：API 登录 vs 手动 token -->
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <button class="btn btn-secondary" id="btn-mode-api" onclick="switchLoginMode('api')">🔑 API 登录</button>
+      <button class="btn btn-primary" id="btn-mode-token" onclick="switchLoginMode('token')">🎫 手动导入 Token</button>
+    </div>
+
+    <!-- API 登录 -->
+    <div id="login-api" style="display:none">
+      <div class="login-form" style="margin:0">
+        <div class="form-group">
+          <label>邮箱</label>
+          <input type="email" id="login-email" placeholder="your_email@example.com">
+        </div>
+        <div class="form-group">
+          <label>密码</label>
+          <input type="password" id="login-password" placeholder="输入密码">
+        </div>
+        <div class="form-group">
+          <label>Device ID（可选，留空使用默认值）</label>
+          <input type="text" id="login-device" placeholder="32位固定字符串">
+        </div>
+        <button class="btn btn-primary" onclick="doLogin()">登录</button>
+      </div>
+    </div>
+
+    <!-- 手动 token 导入 -->
+    <div id="login-token">
+      <div class="status-msg info" style="margin-bottom:16px">
+        💡 <b>获取方法</b>：浏览器打开 <a href="https://mypikpak.com" target="_blank">mypikpak.com</a> 并登录 →
+        按 <b>F12</b> 打开开发者工具 → <b>Application</b> → <b>Local Storage</b> → 找到 <code>token</code> 或 <code>credentials</code>，
+        复制其中的 <code>access_token</code> 和 <code>refresh_token</code> 值。
+      </div>
+
+      <div style="margin-bottom:16px">
+        <label style="font-size:13px;color:#636e72;display:block;margin-bottom:6px">
+          方式一：粘贴完整 token JSON（推荐）
+        </label>
+        <textarea id="token-json" rows="5" style="width:100%;padding:10px;border:2px solid #dfe6e9;border-radius:8px;font-family:monospace;font-size:12px;resize:vertical"
+          placeholder='{"access_token":"xxx","refresh_token":"xxx","token_type":"Bearer",...}'></textarea>
+      </div>
+
+      <details style="margin-bottom:16px">
+        <summary style="cursor:pointer;font-size:13px;color:#636e72;padding:8px 0">方式二：分别填写 token（点开）</summary>
+        <div style="padding-top:12px">
+          <div class="form-group" style="margin-bottom:12px">
+            <label>Access Token</label>
+            <input type="text" id="token-access" placeholder="粘贴 access_token" style="width:100%;padding:10px;border:2px solid #dfe6e9;border-radius:8px;font-family:monospace;font-size:12px">
+          </div>
+          <div class="form-group">
+            <label>Refresh Token</label>
+            <input type="text" id="token-refresh" placeholder="粘贴 refresh_token" style="width:100%;padding:10px;border:2px solid #dfe6e9;border-radius:8px;font-family:monospace;font-size:12px">
+          </div>
+        </div>
+      </details>
+
+      <button class="btn btn-primary" onclick="importToken()">导入并验证 Token</button>
+    </div>
+
+    <div id="login-status" style="margin-top:16px"></div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// 工具函数
+// ============================================================
+function fmtSize(n) {
+  if (n < 1024) return n + ' B';
+  const units = ['KB','MB','GB','TB'];
+  for (const u of units) {
+    n /= 1024;
+    if (n < 1024) return n.toFixed(2) + ' ' + u;
+  }
+  return n.toFixed(2) + ' PB';
+}
+
+function $(id) { return document.getElementById(id); }
+
+// ============================================================
+// 标签页切换（懒加载：点到哪个才加载哪个）
+// ============================================================
+const _loaded = {};
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    tab.classList.add('active');
+    $('tab-' + tab.dataset.tab).classList.add('active');
+
+    // 懒加载
+    const name = tab.dataset.tab;
+    if (!_loaded[name]) {
+      _loaded[name] = true;
+      if (name === 'dedup') loadDedup();
+      if (name === 'largest') loadLargest();
+    }
+  });
+});
+
+// ============================================================
+// 全局数据
+// ============================================================
+let treeData = [];
+let currentPath = '';
+
+// ============================================================
+// API 调用
+// ============================================================
+async function fetchJSON(url, options) {
+  const res = await fetch(url, options);
+  return res.json();
+}
+
+// ============================================================
+// 加载数据
+// ============================================================
+async function loadAll() {
+  await Promise.all([loadStats(), loadTree()]);
+  // dedup 和 largest 改为懒加载，点标签页时才加载
+  _loaded['dedup'] = false;
+  _loaded['largest'] = false;
+}
+
+async function loadStats() {
+  const data = await fetchJSON('/api/tree');
+  if (data.ok) {
+    $('stat-files').textContent = data.summary.total_files.toLocaleString();
+    $('stat-size').textContent = data.summary.total_size_str;
+  }
+  const dedup = await fetchJSON('/api/dedup?summary_only=true');
+  if (dedup.ok) {
+    $('stat-dups').textContent = dedup.summary.total_groups.toLocaleString();
+    $('stat-wasted').textContent = dedup.summary.total_wasted_str;
+  }
+}
+
+async function loadTree() {
+  const data = await fetchJSON('/api/tree');
+  if (!data.ok) return;
+  treeData = data.tree;
+  renderTree();
+}
+
+function renderTree() {
+  // 按当前路径过滤，只显示直接子目录
+  const children = treeData.filter(d => {
+    if (currentPath === '') {
+      return d.depth === 1;
+    }
+    return d.parentPath === currentPath;
+  });
+
+  // 其实我们需要构建父子关系
+  // 重新实现：显示 currentPath 下的直接子目录
+  const container = $('tree-container');
+
+  // 构建 parent 映射
+  const items = treeData.filter(d => {
+    if (currentPath === '') return d.depth === 1;
+    // 子目录 = parent 正好是 currentPath
+    const parts = d.path.split('/');
+    const parent = parts.slice(0, -1).join('/');
+    return parent === currentPath;
+  });
+
+  if (items.length === 0) {
+    // 没有子目录了，显示该目录的文件？暂时提示
+    container.innerHTML = '<div class="empty-state"><div class="icon">📂</div><p>此目录下没有子目录</p></div>';
+    return;
+  }
+
+  // 按 total_bytes 降序
+  items.sort((a, b) => b.total_bytes - a.total_bytes);
+
+  container.innerHTML = items.map(d => `
+    <div class="tree-item" onclick="treeNavigate('${d.path}')">
+      <div class="icon">📁</div>
+      <div class="name">${d.name}</div>
+      <div class="count">${d.total_files.toLocaleString()} 个文件</div>
+      <div class="size">${d.total_size_str}</div>
+    </div>
+  `).join('');
+}
+
+function treeNavigate(path) {
+  currentPath = path;
+  // 更新面包屑
+  const parts = path ? path.split('/') : [];
+  let html = '<span onclick="treeNavigate(\'\')">🏠 根目录</span>';
+  let acc = '';
+  for (const p of parts) {
+    acc = acc ? acc + '/' + p : p;
+    html += `<span class="sep">/</span><span onclick="treeNavigate('${acc}')">${p}</span>`;
+  }
+  $('tree-breadcrumb').innerHTML = html;
+  renderTree();
+}
+
+// ============================================================
+// 去重
+// ============================================================
+async function loadDedup() {
+  const container = $('dedup-container');
+  container.innerHTML = '<div style="text-align:center;padding:40px"><div class="spinner"></div><p style="margin-top:12px;color:#636e72">正在分析重复文件...</p></div>';
+
+  const data = await fetchJSON('/api/dedup');
+  if (!data.ok) {
+    container.innerHTML = `<div class="status-msg error">${data.error}</div>`;
+    return;
+  }
+  const groups = data.groups;
+
+  if (groups.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">✅</div><p>没有发现重复文件</p></div>';
+    return;
+  }
+
+  container.innerHTML = groups.map((g, i) => `
+    <div class="dup-group">
+      <div class="dup-header" onclick="toggleDup(${i})">
+        <span class="dup-count">×${g.count}</span>
+        <span class="dup-name">${g.name}</span>
+        <span style="color:#636e72;font-size:13px">${g.size_str}</span>
+        <span class="dup-wasted">浪费 ${g.wasted_str}</span>
+      </div>
+      <div class="dup-files" id="dup-files-${i}">
+        ${g.files.map((f, j) => `
+          <div class="dup-file" id="dup-file-${i}-${j}">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+              <input type="radio" name="keep-${i}" value="${j}" ${j === 0 ? 'checked' : ''} onchange="updateKeepLabel(${i})">
+              <span>📄 ${f.path}</span>
+              ${j === 0 ? '<span style="color:#00b894;font-size:11px;font-weight:600;margin-left:4px">← 默认保留</span>' : ''}
+            </label>
+          </div>
+        `).join('')}
+        <div style="margin-top:12px;display:flex;gap:8px">
+          <button class="btn btn-danger" onclick="deleteDupGroup(${i})" id="dup-btn-${i}">
+            🗑️ 删除多余副本（保留选中项）
+          </button>
+          <button class="btn btn-secondary" onclick="toggleDup(${i})">取消</button>
+        </div>
+        <div id="dup-status-${i}" style="margin-top:8px"></div>
+      </div>
+    </div>
+  `).join('');
+
+  // 存储组数据供删除用
+  window._dupGroups = groups;
+}
+
+function toggleDup(i) {
+  const el = $('dup-files-' + i);
+  if (el) el.classList.toggle('open');
+}
+
+function updateKeepLabel(i) {
+  // 选中的 radio 标记为保留
+  const radios = document.querySelectorAll(`input[name="keep-${i}"]`);
+  radios.forEach((r, j) => {
+    const label = r.closest('label');
+    const badge = label.querySelector('span[style*="00b894"]');
+    if (badge) badge.remove();
+    if (r.checked) {
+      const span = document.createElement('span');
+      span.style.cssText = 'color:#00b894;font-size:11px;font-weight:600;margin-left:4px';
+      span.textContent = '← 保留';
+      label.appendChild(span);
+    }
+  });
+}
+
+async function deleteDupGroup(i) {
+  const g = window._dupGroups[i];
+  if (!g) return;
+
+  // 找到选中的保留项
+  const checked = document.querySelector(`input[name="keep-${i}"]:checked`);
+  const keepIdx = checked ? parseInt(checked.value) : 0;
+  const keepPath = g.files[keepIdx].path;
+
+  // 确认
+  const deleteCount = g.files.length - 1;
+  if (!confirm(`确定删除 ${deleteCount} 个重复副本？\n保留: ${keepPath}\n\n（文件会移入回收站，可恢复）`)) return;
+
+  const btn = $('dup-btn-' + i);
+  btn.disabled = true;
+  btn.textContent = '删除中...';
+  $('dup-status-' + i).innerHTML = '<div class="status-msg info">⏳ 正在删除...</div>';
+
+  // 收集要删除的 id
+  const deleteIds = g.files
+    .filter((f, j) => j !== keepIdx)
+    .map(f => f.id);
+
+  const res = await fetchJSON('/api/dedup/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file_ids: deleteIds }),
+  });
+
+  if (res.ok) {
+    $('dup-status-' + i).innerHTML = `<div class="status-msg success">✅ 已删除 ${res.deleted} 个重复副本（移入回收站）</div>`;
+    setTimeout(() => loadAll(), 1500);  // 刷新数据
+  } else {
+    $('dup-status-' + i).innerHTML = `<div class="status-msg error">❌ 删除失败: ${res.error}</div>`;
+    btn.disabled = false;
+    btn.textContent = '🗑️ 删除多余副本（保留选中项）';
+  }
+}
+
+// 批量去重：删除所有重复组的多余副本（每组保留第一个）
+async function batchDedup() {
+  const summary = await fetchJSON('/api/dedup?summary_only=true');
+  if (!summary.ok) {
+    alert('获取去重信息失败');
+    return;
+  }
+
+  const s = summary.summary;
+  if (s.total_groups === 0) {
+    alert('没有发现重复文件');
+    return;
+  }
+
+  if (!confirm(`⚠️ 批量去重确认\n\n将删除约 ${s.total_dup_files - s.total_groups} 个重复副本，释放约 ${s.total_wasted_str} 空间。\n（共 ${s.total_groups} 个重复组，每组自动保留第一个文件）\n\n文件会移入回收站（可恢复）。确定继续？`)) return;
+
+  const btn = $('btn-batch-dedup');
+  btn.disabled = true;
+  btn.textContent = '处理中，请稍候...';
+  $('dedup-status').innerHTML = '<div class="status-msg info">⏳ 正在批量删除重复文件，请勿关闭页面...</div>';
+
+  const res = await fetchJSON('/api/dedup/batch_delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+
+  if (res.ok) {
+    $('dedup-status').innerHTML = `<div class="status-msg success">✅ 批量去重完成！共删除 ${res.deleted} 个重复副本</div>`;
+  } else {
+    $('dedup-status').innerHTML = `<div class="status-msg error">❌ 删除失败: ${res.error}</div>`;
+  }
+
+  btn.disabled = false;
+  btn.textContent = '🚀 一键批量去重';
+  setTimeout(() => loadAll(), 1500);
+}
+
+// ============================================================
+// 大文件
+// ============================================================
+async function loadLargest() {
+  const data = await fetchJSON('/api/largest?limit=100');
+  if (!data.ok) return;
+  const files = data.files;
+  const container = $('largest-container');
+
+  if (files.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">📊</div><p>暂无数据</p></div>';
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr><th>#</th><th>文件名</th><th>路径</th><th style="text-align:right">大小</th></tr>
+      </thead>
+      <tbody>
+        ${files.map((f, i) => `
+          <tr>
+            <td>${i + 1}</td>
+            <td>${f.name}</td>
+            <td class="path-col" title="${f.path}">${f.path}</td>
+            <td class="size-col">${f.size_str}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+// ============================================================
+// 搜索
+// ============================================================
+async function doSearch() {
+  const kw = $('search-input').value.trim();
+  if (!kw) return;
+  const data = await fetchJSON('/api/search?q=' + encodeURIComponent(kw));
+  const container = $('search-results');
+
+  if (!data.ok) {
+    container.innerHTML = `<div class="status-msg error">${data.error}</div>`;
+    return;
+  }
+  if (data.files.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">🔎</div><p>没有找到匹配的文件</p></div>';
+    return;
+  }
+
+  container.innerHTML = `
+    <p style="font-size:13px;color:#636e72;margin-bottom:12px">找到 ${data.files.length} 个结果</p>
+    <table class="data-table">
+      <thead>
+        <tr><th>文件名</th><th>路径</th><th style="text-align:right">大小</th></tr>
+      </thead>
+      <tbody>
+        ${data.files.map(f => `
+          <tr>
+            <td>${f.name}</td>
+            <td class="path-col" title="${f.path}">${f.path}</td>
+            <td class="size-col">${f.size_str}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+// ============================================================
+// 扫描
+// ============================================================
+async function startScan() {
+  const btn = $('btn-scan');
+  btn.disabled = true;
+  btn.textContent = '扫描中...';
+  $('scan-progress-bar').style.display = 'block';
+
+  const res = await fetchJSON('/api/scan/start', { method: 'POST' });
+  if (!res.ok) {
+    $('scan-status').innerHTML = `<div class="status-msg error">${res.error}</div>`;
+    btn.disabled = false;
+    btn.textContent = '开始全盘扫描';
+    return;
+  }
+
+  // 轮询进度
+  const timer = setInterval(async () => {
+    const status = await fetchJSON('/api/scan/status');
+    const p = status.progress || {};
+    $('scan-progress-text').textContent = p.msg || '';
+
+    if (status.running) {
+      // 进度条不确定，做动画效果
+      const fill = $('scan-progress-fill');
+      let w = parseInt(fill.style.width) || 0;
+      w = Math.min(w + 2, 90);
+      fill.style.width = w + '%';
+    } else {
+      clearInterval(timer);
+      $('scan-progress-fill').style.width = '100%';
+      if (status.last && !status.last.error) {
+        $('scan-status').innerHTML = `<div class="status-msg success">✅ 扫描完成！${status.last.total_files} 个文件，${status.last.total_size_str}，耗时 ${status.last.elapsed_sec} 秒</div>`;
+        loadAll();
+      } else if (status.last && status.last.error) {
+        $('scan-status').innerHTML = `<div class="status-msg error">❌ 扫描失败：${status.last.error}</div>`;
+      }
+      btn.disabled = false;
+      btn.textContent = '开始全盘扫描';
+    }
+  }, 1000);
+}
+
+// ============================================================
+// 登录
+// ============================================================
+function switchLoginMode(mode) {
+  if (mode === 'api') {
+    $('login-api').style.display = 'block';
+    $('login-token').style.display = 'none';
+    $('btn-mode-api').className = 'btn btn-primary';
+    $('btn-mode-token').className = 'btn btn-secondary';
+  } else {
+    $('login-api').style.display = 'none';
+    $('login-token').style.display = 'block';
+    $('btn-mode-api').className = 'btn btn-secondary';
+    $('btn-mode-token').className = 'btn btn-primary';
+  }
+}
+
+async function doLogin() {
+  const email = $('login-email').value.trim();
+  const password = $('login-password').value;
+  const device = $('login-device').value.trim();
+
+  if (!email || !password) {
+    $('login-status').innerHTML = '<div class="status-msg error">请填写邮箱和密码</div>';
+    return;
+  }
+
+  const res = await fetchJSON('/api/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: email, password: password, device_id: device }),
+  });
+
+  if (res.ok) {
+    $('login-status').innerHTML = `<div class="status-msg success">✅ 登录成功！网盘容量: ${res.quota.usage_gb} GB / ${res.quota.limit_gb} GB</div>`;
+  } else {
+    $('login-status').innerHTML = `<div class="status-msg error">❌ 登录失败：${res.error}</div>`;
+  }
+}
+
+async function importToken() {
+  const rawJson = $('token-json').value.trim();
+  const accessToken = $('token-access') ? $('token-access').value.trim() : '';
+  const refreshToken = $('token-refresh') ? $('token-refresh').value.trim() : '';
+
+  if (!rawJson && (!accessToken || !refreshToken)) {
+    $('login-status').innerHTML = '<div class="status-msg error">请粘贴 JSON 或填写 access_token + refresh_token</div>';
+    return;
+  }
+
+  const body = rawJson
+    ? { raw_json: rawJson }
+    : { access_token: accessToken, refresh_token: refreshToken };
+
+  $('login-status').innerHTML = '<div class="status-msg info">⏳ 正在验证 token...</div>';
+
+  const res = await fetchJSON('/api/token/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (res.ok) {
+    $('login-status').innerHTML = `<div class="status-msg success">✅ Token 导入成功！网盘容量: ${res.quota.usage_gb} GB / ${res.quota.limit_gb} GB</div>`;
+  } else {
+    $('login-status').innerHTML = `<div class="status-msg error">❌ ${res.error}</div>`;
+  }
+}
+
+// 默认显示 token 导入方式
+switchLoginMode('token');
+
+// ============================================================
+// 初始化
+// ============================================================
+loadAll();
+</script>
+</body>
+</html>
